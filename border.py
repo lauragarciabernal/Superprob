@@ -13,13 +13,6 @@ class laura:
         self.b0=None
         self.setup_pipeline()
 
-    def leer_datos(self, img):
-        rdr = vtk.vtkNIFTIImageReader()
-        rdr.SetFileName(img)
-        rdr.Update()
-        rdr.GetOutput()
-        self.rdr=rdr
-        print(rdr.GetOutput())
 
     def setup_pipeline(self):
         self.renderer = vtk.vtkRenderer()
@@ -29,6 +22,11 @@ class laura:
         self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
         self.render_window.SetInteractor(self.interactor)
         self.renderer.SetBackground(0.2,0.2,0.2)
+        camara = self.renderer.GetActiveCamera()
+        camara.SetPosition(0,1,0)
+        camara.SetFocalPoint(1,0,0)
+        camara.SetViewUp(0,0,-1)
+        self.render_window.Start()
         self.interactor.Initialize()
         self.render_window.Render()
 
@@ -42,14 +40,24 @@ class laura:
         self.outline_actor.SetMapper(outline_mapper)
         self.outline_actor.GetProperty().SetColor(1,1,1)
 
-    def load_data(self, img):
-        self.leer_datos(img)
+    def load_data_3d(self, img_3d):
+        rdr = vtk.vtkNIFTIImageReader()
+        rdr.SetFileName(img_3d)
+        rdr.Update()
+        rdr.GetOutput()
+        self.rdr=rdr
+        print(rdr.GetOutput())
         outline_actor = self.create_outline()
         self.renderer.AddActor(outline_actor)
+        self.widget()
         self.renderer.ResetCamera()
         self.render_window.Render()
-        self.render_window.Start()
-        self.widget()
+
+    def load_data_prob(self, img_prob):
+        rdr2 = vtk.vtkNIFTIImageReader()
+        rdr2.SetFileName(img_prob)
+        rdr2.Update()
+        self.b0 = rdr2.GetOutput()
         self.iso_surfaces()
         self.opacity()
 
@@ -57,6 +65,7 @@ class laura:
         img = vtk.vtkImagePlaneWidget()
         img.SetInputConnection(self.rdr.GetOutputPort())
         img.SetInteractor(self.interactor)
+        img.SetSliceIndex(250)
         img.On()
 
     def iso_surfaces(self):
@@ -77,16 +86,20 @@ class laura:
 
     def start(self):
         self.renderer.AddActor(self.outline_actor)
-        self.renderer.ResetCamera()
         self.render_window.Render()
+        self.renderer.ResetCamera()
         self.interactor.Start()
 
 if __name__ == "__main__":
     default_img="/Users/LauraGarcia/Documents/IMEXHS/proba_seg1/fdt_paths.nii.gz"
+    default_3D="/Users/LauraGarcia/Documents/IMEXHS/proba_seg1/unido.nii.gz"
     prob= laura()
-    if (len(sys.argv) > 1):
-        dir = sys.argv[1]
+    if (len(sys.argv) > 2):
+        img_3d = sys.argv[1]
+        img_prob = sys.argv[2]
     else:
-        img2 = default_img
-    prob.load_data(img2)
+        img_prob = default_img
+        img_3d = default_3D
+    prob.load_data_3d(img_3d)
+    prob.load_data_prob(img_prob)
     prob.start()
