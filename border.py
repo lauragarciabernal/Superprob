@@ -1,30 +1,25 @@
+
 from __future__ import print_function, division
 import vtk
 import os
 import sys
 
-
-class Laurota:
+class laura:
     def __init__(self):
-        self.renderer = None
-        self.interactor = None
-        self.render_window = None
+        self.renderer=None
+        self.interactor=None
+        self.render_window=None
+        self.rdr=None
+        self.b0=None
         self.setup_pipeline()
 
-    def leer_datos(self, directory):
-        os.chdir(directory)
-        pl3d = vtk.vtkMultiBlockPLOT3DReader()
-        xyx_file="combxyz.bin"
-        q_file= "combq.bin"
-        pl3d.SetXYZFileName(xyx_file)
-        pl3d.SetQFileName(q_file)
-        pl3d.SetScalarFunctionNumber(100)
-        pl3d.SetVectorFunctionNumber(202)
-        pl3d.Update()
-        blocks = pl3d.GetOutput()
-        b0=blocks.GetBlock(0)
-        print(b0)
-        return b0
+    def leer_datos(self, img):
+        rdr = vtk.vtkNIFTIImageReader()
+        rdr.SetFileName(img)
+        rdr.Update()
+        rdr.GetOutput()
+        self.rdr=rdr
+        print(rdr.GetOutput())
 
     def setup_pipeline(self):
         self.renderer = vtk.vtkRenderer()
@@ -35,37 +30,63 @@ class Laurota:
         self.render_window.SetInteractor(self.interactor)
         self.renderer.SetBackground(0.2,0.2,0.2)
         self.interactor.Initialize()
+        self.render_window.Render()
 
-    def create_outline(self, datos):
-        outline = vtk.vtkStructuredGridOutlineFilter()
-        outline.SetInputData(datos)
+    def create_outline(self):
+        outline = vtk.vtkOutlineFilter()
+        self.b0 = self.rdr.GetOutput()
+        outline.SetInputConnection(self.rdr.GetOutputPort())
         outline_mapper = vtk.vtkPolyDataMapper()
         outline_mapper.SetInputConnection(outline.GetOutputPort())
-        outline_actor = vtk.vtkActor()
-        outline_actor.SetMapper(outline_mapper)
-        outline_actor.GetProperty().SetColor(1,1,1)
-        return outline_actor
+        self.outline_actor = vtk.vtkActor()
+        self.outline_actor.SetMapper(outline_mapper)
+        self.outline_actor.GetProperty().SetColor(1,1,1)
 
-    def load_data(self, directory):
-        b0 = self.leer_datos(directory)
-        outline_actor = self.create_outline(b0)
+    def load_data(self, img):
+        self.leer_datos(img)
+        outline_actor = self.create_outline()
         self.renderer.AddActor(outline_actor)
-        self.render_window.Render()
         self.renderer.ResetCamera()
+        self.render_window.Render()
+        self.render_window.Start()
+        self.widget()
+        self.iso_surfaces()
+        self.opacity()
+
+    def widget(self):
+        img = vtk.vtkImagePlaneWidget()
+        img.SetInputConnection(self.rdr.GetOutputPort())
+        img.SetInteractor(self.interactor)
+        img.On()
+
+    def iso_surfaces(self):
+        min_s, max_s = self.b0.GetScalarRange()
+        contours = vtk.vtkContourFilter()
+        contours.SetInputData(self.b0)
+        contours.GenerateValues(5, (min_s, max_s))
+        contours_mapper = vtk.vtkPolyDataMapper()
+        contours_mapper.SetInputConnection(contours.GetOutputPort())
+        self.contours_actor = vtk.vtkActor()
+        self.contours_actor.SetMapper(contours_mapper)
+        self.renderer.AddActor(self.contours_actor)
+
+
+    def opacity(self):
+        self.contours_actor.GetProperty().SetOpacity(0.3)
         self.render_window.Render()
 
     def start(self):
+        self.renderer.AddActor(self.outline_actor)
+        self.renderer.ResetCamera()
+        self.render_window.Render()
         self.interactor.Start()
 
-    def hola(self):
-        print("Hola, soy laura")
-
 if __name__ == "__main__":
-    default_dir="/Users/LauraGarcia/Downloads/volume"
-    laurita = Laurota()
-    if(len(sys.argv)>1):
+    default_img="/Users/LauraGarcia/Documents/IMEXHS/proba_seg1/fdt_paths.nii.gz"
+    prob= laura()
+    if (len(sys.argv) > 1):
         dir = sys.argv[1]
     else:
-        dir = default_dir
-    laurita.load_data(dir)
-    laurita.start()
+        img2 = default_img
+    prob.load_data(img2)
+    prob.start()
