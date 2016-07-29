@@ -33,6 +33,7 @@ class LauraApp(QtGui.QMainWindow):
         r,g,b, _ = new_color.getRgb()
         self.vtk_widget.change_prob_color(r,g,b)
 
+
 class QVtkLaura(QtGui.QFrame):
     def __init__(self,parent):
         super(QVtkLaura,self).__init__(parent)
