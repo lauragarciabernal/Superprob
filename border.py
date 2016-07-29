@@ -1,5 +1,6 @@
-
 from __future__ import print_function, division
+import sip
+sip.setapi("QString", 2)
 import vtk
 import sys, os
 from vtk.qt4.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -17,13 +18,16 @@ class LauraApp(QtGui.QMainWindow):
         import laura_gui
         self.ui = laura_gui.Ui_MainWindow()
         self.ui.setupUi(self)
-        self.vtk_widget = QVtkLaura(self.ui.vtk_frame)
+        self.vtk_widget = QVtkLaura(self.ui.vtk_frame, self)
         self.ui.vtk_layout = QtGui.QHBoxLayout()
         self.ui.vtk_layout.addWidget(self.vtk_widget)
         self.ui.vtk_layout.setContentsMargins(0,0,0,0)
         self.ui.vtk_frame.setLayout(self.ui.vtk_layout)
         self.ui.slider_opacity.valueChanged.connect(self.vtk_widget.change_opacity)
         self.ui.button_select_color.clicked.connect(self.show_color_dialog)
+        self.ui.button_load_3D.clicked.connect(self.dialog_3D)
+        self.ui.button_load_proba.clicked.connect(self.dialog_prob)
+        self.ui.value_min_proba.valueChanged.connect(self.vtk_widget.change_min_val)
 
     def initialize(self):
         self.vtk_widget.start()
@@ -33,9 +37,23 @@ class LauraApp(QtGui.QMainWindow):
         r,g,b, _ = new_color.getRgb()
         self.vtk_widget.change_prob_color(r,g,b)
 
+    def dialog_3D(self):
+        new_file=QtGui.QFileDialog.getOpenFileName(self, "Open 3D Image", "" , "Image Files (*.nii *.nii.gz)")
+        self.vtk_widget.change_dialog_3D(new_file)
+
+
+    def dialog_prob(self):
+        new_file2 = QtGui.QFileDialog.getOpenFileName(self, "Open Probabilistic Image", "", "Image Files (*.nii *.nii.gz)")
+        self.vtk_widget.change_dialog_prob(new_file2)
+
+    def set_min_val(self,new_val):
+        self.ui.value_min_proba.setValue(new_val)
+
+
+
 
 class QVtkLaura(QtGui.QFrame):
-    def __init__(self,parent):
+    def __init__(self,parent, app):
         super(QVtkLaura,self).__init__(parent)
         interactor = QVTKRenderWindowInteractor(self)
         self.layout = QtGui.QHBoxLayout()
@@ -48,6 +66,7 @@ class QVtkLaura(QtGui.QFrame):
         self.rdr=None
         self.b0=None
         self.setup_pipeline()
+        self.app = app
 
 
     def setup_pipeline(self):
@@ -63,13 +82,13 @@ class QVtkLaura(QtGui.QFrame):
 
     def create_outline(self):
         outline = vtk.vtkOutlineFilter()
-        self.b0 = self.rdr.GetOutput()
-        outline.SetInputConnection(self.rdr.GetOutputPort())
+        outline.SetInputData(self.rdr.GetOutput())
         outline_mapper = vtk.vtkPolyDataMapper()
         outline_mapper.SetInputConnection(outline.GetOutputPort())
         self.outline_actor = vtk.vtkActor()
         self.outline_actor.SetMapper(outline_mapper)
         self.outline_actor.GetProperty().SetColor(1,1,1)
+        self.outline = outline
         self.renderer.AddActor(self.outline_actor)
 
 
@@ -90,32 +109,36 @@ class QVtkLaura(QtGui.QFrame):
         rdr2 = vtk.vtkNIFTIImageReader()
         rdr2.SetFileName(img_prob)
         rdr2.Update()
+        self.rdr2=rdr2
         self.b0 = rdr2.GetOutput()
         self.iso_surfaces()
         self.opacity()
 
     def widget(self):
         img = vtk.vtkImagePlaneWidget()
-        img.SetInputConnection(self.rdr.GetOutputPort())
+        img.SetInputData(self.rdr.GetOutput())
         img.SetInteractor(self.interactor)
         img_data = self.rdr.GetOutput()
         dimensions = img_data.GetDimensions()
         mid_point=int(dimensions[1]/2)
         img.SetSliceIndex(mid_point)
         img.On()
+        self.img = img
 
     def iso_surfaces(self):
         min_s, max_s = self.b0.GetScalarRange()
         contours = vtk.vtkContourFilter()
         contours.SetInputData(self.b0)
-        contours.GenerateValues(5, (min_s, max_s))
+        contours.GenerateValues(5, (max_s/5, max_s))
+        print (max_s)
         contours_mapper = vtk.vtkPolyDataMapper()
         contours_mapper.SetInputConnection(contours.GetOutputPort())
         contours_mapper.ScalarVisibilityOff()
         self.contours_actor = vtk.vtkActor()
         self.contours_actor.SetMapper(contours_mapper)
         self.renderer.AddActor(self.contours_actor)
-
+        self.contours =contours
+        self.app.set_min_val(max_s / 5)
 
     def opacity(self):
         self.contours_actor.GetProperty().SetOpacity(0.3)
@@ -134,6 +157,33 @@ class QVtkLaura(QtGui.QFrame):
     def change_prob_color(self,r,g,b):
         self.contours_actor.GetProperty().SetColor(r/255,g/255,b/255)
         self.render_window.Render()
+
+    def change_dialog_3D(self, load_3d):
+        rdr = vtk.vtkNIFTIImageReader()
+        rdr.SetFileName(load_3d)
+        rdr.Update()
+        self.img.SetInputData(rdr.GetOutput())
+        self.outline.SetInputData(rdr.GetOutput())
+        self.render_window.Render()
+        self.rdr = rdr
+
+    def change_dialog_prob(self, load_prob):
+        rdr2 =vtk.vtkNIFTIImageReader()
+        rdr2.SetFileName(load_prob)
+        rdr2.Update()
+        info=rdr2.GetOutput()
+        min_s, max_s= info.GetScalarRange()
+        self.contours.GenerateValues(5, (min_s, max_s))
+        self.contours.SetInputData(rdr2.GetOutput())
+        self.render_window.Render()
+        self.rdr2=rdr2
+
+    def change_min_val(self, value):
+        val=self.rdr2.GetOutput()
+        minimum, maximum =val.GetScalarRange()
+        self.contours.GenerateValues(5, (value, maximum))
+        self.render_window.Render()
+
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(__file__))
